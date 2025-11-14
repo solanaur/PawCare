@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Manage Users - Paw Care</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>body{font-family:'Poppins',sans-serif}.shadow-soft{box-shadow:0 4px 16px rgba(0,0,0,.05)}:root{--soft-teal:#199e9e}</style>
+</head>
+<body class="bg-[#f6f9f9] min-h-screen flex flex-col">
+  <header class="w-full bg-[var(--soft-teal)] text-white flex items-center justify-between px-12 py-4 shadow-soft">
+    <div class="flex items-center space-x-5"><img src="assets/logo.png" class="w-14 h-14 rounded-lg bg-white p-1 object-contain"><div><h1 class="text-2xl font-semibold">Paw Care Veterinary Clinic</h1><p class="text-sm text-gray-100/90">Caring for your pets with compassion and expertise</p></div></div>
+    <button class="bg-white text-[var(--soft-teal)] px-5 py-2 rounded-md font-semibold hover:bg-gray-50" onclick="logout()">Logout</button>
+  </header>
+
+  <div class="flex flex-1">
+    <aside class="w-72 bg-white border-r border-gray-200 p-6 shadow-soft">
+      <h2 class="text-xl font-semibold text-[var(--soft-teal)] uppercase mb-4">Manage Users</h2>
+      <nav id="sidebarNav" class="flex flex-col space-y-2"></nav>
+    </aside>
+
+    <main class="flex-1 p-8">
+      <div class="bg-white rounded-2xl shadow-soft p-8">
+        <div class="flex items-center justify-between mb-6">
+          <h3 class="text-2xl font-semibold text-gray-800">Users</h3>
+          <button id="addBtn" class="bg-[var(--soft-teal)] text-white px-5 py-3 rounded-md hover:brightness-95">Add User</button>
+        </div>
+        <table class="w-full border-collapse">
+          <thead>
+            <tr class="text-left text-gray-600 border-b">
+              <th class="py-3">Name</th>
+              <th class="py-3">Username</th>
+              <th class="py-3">Role</th>
+              <th class="py-3">Email</th>
+              <th class="py-3">Active</th>
+              <th class="py-3">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <div id="modalRoot"></div>
+
+  <script src="assets/api.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    ensureLoggedIn();
+    const role = getRole();
+    // Only admin can access manage users
+    if(role !== 'admin'){
+      location.href = 'dashboard.html';
+    }
+    renderSidebar(document.getElementById('sidebarNav'), role, 'manage-users.html');
+
+    const rows=document.getElementById('rows');
+    const modalRoot=document.getElementById('modalRoot');
+
+    const userCache = new Map();
+
+    async function render(){
+      const users=await repoListUsers();
+      userCache.clear();
+      users.forEach(u=>userCache.set(u.id,u));
+      rows.innerHTML=users.map(u=>`
+        <tr class="border-b">
+          <td class="py-3">${u.name}</td>
+          <td class="py-3">${u.username||''}</td>
+          <td class="py-3 capitalize">${u.role}</td>
+          <td class="py-3">${u.email||''}</td>
+          <td class="py-3">${u.active?'Yes':'No'}</td>
+          <td class="py-3 space-x-2">
+            <button class="px-3 py-2 border rounded-md hover:bg-gray-50" onclick='editUser(${u.id})'>Edit</button>
+            <button class="px-3 py-2 border rounded-md text-red-600 hover:bg-red-50" onclick="del(${u.id})">Delete</button>
+          </td>
+        </tr>`).join('');
+    }
+    async function del(id){ await repoDeleteUser(id); render(); }
+
+    function editUser(id){
+      const user = userCache.get(id);
+      openModal(user);
+    }
+
+    document.getElementById('addBtn').onclick=()=>openModal();
+
+    function openModal(user){
+      modalRoot.innerHTML=`
+        <div class="fixed inset-0 bg-black/40 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl w-full max-w-lg p-6">
+            <h3 class="text-xl font-semibold mb-4">${user?'Edit':'Add'} User</h3>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="text-sm text-gray-600">Full Name
+                <input id="f_name" value="${user?.name||''}" class="w-full border border-gray-300 rounded-md p-3 mt-1" />
+              </label>
+              <label class="text-sm text-gray-600">Username
+                <input id="f_username" value="${user?.username||''}" ${user?'readonly':''} class="w-full border border-gray-300 rounded-md p-3 mt-1 ${user?'bg-gray-100 cursor-not-allowed':''}" />
+              </label>
+            </div>
+            <label class="text-sm text-gray-600 block mb-3 mt-3">Email
+              <input id="f_email" value="${user?.email||''}" class="w-full border border-gray-300 rounded-md p-3 mt-1" />
+            </label>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="text-sm text-gray-600">Role
+                <select id="f_role" class="w-full border border-gray-300 rounded-md p-3 mt-1">
+                  <option value="admin" ${user?.role==='admin'?'selected':''}>Admin</option>
+                  <option value="vet" ${user?.role==='vet'?'selected':''}>Vet</option>
+                  <option value="receptionist" ${user?.role==='receptionist'?'selected':''}>Receptionist</option>
+                  <option value="pharmacist" ${user?.role==='pharmacist'?'selected':''}>Pharmacist</option>
+                </select>
+              </label>
+              <label class="text-sm text-gray-600 flex items-center gap-2 mt-6">
+                <input type="checkbox" id="f_active" ${user?.active!==false?'checked':''} class="w-4 h-4">
+                Active
+              </label>
+            </div>
+            <label class="text-sm text-gray-600 block mb-3 mt-3">Password ${user?'(leave blank to keep current)':''}
+              <input id="f_password" type="password" class="w-full border border-gray-300 rounded-md p-3 mt-1" autocomplete="new-password" />
+            </label>
+            <div class="mt-5 flex justify-end gap-3">
+              <button class="px-4 py-2 border rounded-md" onclick="closeModal()">Cancel</button>
+              <button class="px-5 py-2 rounded-md bg-[var(--soft-teal)] text-white" onclick="saveUser(${user?user.id:'null'})">Save</button>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function closeModal(){ modalRoot.innerHTML=''; }
+    async function saveUser(userId){
+      try {
+        const name=document.getElementById('f_name').value.trim();
+        const username=document.getElementById('f_username').value.trim().toLowerCase();
+        const email=document.getElementById('f_email').value.trim();
+        const r=document.getElementById('f_role').value;
+        const active=document.getElementById('f_active').checked;
+        const password=document.getElementById('f_password').value;
+        if(!name){alert('Name required');return;}
+        if(!username){alert('Username required');return;}
+        if(!userId && password.length<8){alert('Password must be at least 8 characters');return;}
+        const payload={name,username,email,role:r,active};
+        if(password) payload.password=password;
+        if(userId){
+          payload.id=userId;
+          await repoUpdateUser(payload);
+        }else{
+          await repoCreateUser(payload);
+        }
+        closeModal(); render();
+      } catch(err) {
+        console.error('Error saving user:', err);
+        // Error is already shown by showNotification in repoUpdateUser/repoCreateUser
+        // Don't show another alert
+      }
+    }
+    render();
+  </script>
+</body>
+</html>

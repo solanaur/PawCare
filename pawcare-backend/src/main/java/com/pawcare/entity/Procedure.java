@@ -1,0 +1,90 @@
+package com.pawcare.entity;
+
+import jakarta.persistence.*;
+import java.time.LocalDate;
+import java.math.BigDecimal;
+
+@Entity
+@Table(name = "procedures")
+public class Procedure {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "procedure_date")
+    private LocalDate date;
+
+    @Column(name = "procedure_name")
+    private String procedure;
+
+    @Column(name = "procedure_code")
+    private String procedureCode;
+
+    private String notes;
+    private String vet;
+
+    // Extra fields to align with frontend automation
+    private String category;
+    private String labType;
+    private String medications;
+    private String dosage;
+    private String directions;
+
+    @Column(precision = 12, scale = 2)
+    private BigDecimal cost;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "pet_id")
+    private Pet pet;
+
+    // Constructors
+    public Procedure() {}
+
+    public Procedure(LocalDate date, String procedure, String notes, String vet) {
+        this.date = date;
+        this.procedure = procedure;
+        this.notes = notes;
+        this.vet = vet;
+    }
+
+    // Getters and Setters
+    public Long getId() { return id; }
+    public void setId(Long id) { this.id = id; }
+
+    public LocalDate getDate() { return date; }
+    public void setDate(LocalDate date) { this.date = date; }
+
+    public String getProcedure() { return procedure; }
+    public void setProcedure(String procedure) { this.procedure = procedure; }
+
+    public String getProcedureCode() { return procedureCode; }
+    public void setProcedureCode(String procedureCode) { this.procedureCode = procedureCode; }
+
+    public String getNotes() { return notes; }
+    public void setNotes(String notes) { this.notes = notes; }
+
+    public String getVet() { return vet; }
+    public void setVet(String vet) { this.vet = vet; }
+
+    public String getCategory() { return category; }
+    public void setCategory(String category) { this.category = category; }
+
+    public String getLabType() { return labType; }
+    public void setLabType(String labType) { this.labType = labType; }
+
+    public String getMedications() { return medications; }
+    public void setMedications(String medications) { this.medications = medications; }
+
+    public String getDosage() { return dosage; }
+    public void setDosage(String dosage) { this.dosage = dosage; }
+
+    public String getDirections() { return directions; }
+    public void setDirections(String directions) { this.directions = directions; }
+
+    public BigDecimal getCost() { return cost; }
+    public void setCost(BigDecimal cost) { this.cost = cost; }
+
+    public Pet getPet() { return pet; }
+    public void setPet(Pet pet) { this.pet = pet; }
+}
+

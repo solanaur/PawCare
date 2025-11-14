@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Pet Records - Paw Care</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>body{font-family:'Poppins',sans-serif}.shadow-soft{box-shadow:0 4px 16px rgba(0,0,0,.05)}:root{--soft-teal:#199e9e}</style>
+</head>
+<body class="bg-[#f6f9f9] min-h-screen flex flex-col">
+  <header class="w-full bg-[var(--soft-teal)] text-white flex items-center justify-between px-12 py-4 shadow-soft">
+    <div class="flex items-center space-x-5"><img src="assets/logo.png" class="w-14 h-14 rounded-lg bg-white p-1 object-contain"><div><h1 class="text-2xl font-semibold">Paw Care Veterinary Clinic</h1><p class="text-sm text-gray-100/90">Caring for your pets with compassion and expertise</p></div></div>
+    <button class="bg-white text-[var(--soft-teal)] px-5 py-2 rounded-md font-semibold hover:bg-gray-50" onclick="logout()">Logout</button>
+  </header>
+
+  <div class="flex flex-1">
+    <aside class="w-72 bg-white border-r border-gray-200 p-6 shadow-soft">
+      <h2 class="text-xl font-semibold text-[var(--soft-teal)] uppercase mb-4">Pet Records</h2>
+      <nav id="sidebarNav" class="flex flex-col space-y-2"></nav>
+    </aside>
+
+    <main class="flex-1 p-8">
+      <div class="bg-white rounded-2xl shadow-soft p-8">
+        <div class="flex items-center justify-between gap-4 mb-6">
+          <div><h3 class="text-2xl font-semibold text-gray-800">Pet Records</h3><p class="text-gray-600 text-sm">Add, view, edit or delete pet records. Click “View” to open the profile.</p></div>
+          <div class="flex items-center gap-3">
+            <input id="petSearch" class="border border-gray-300 rounded-md p-3 w-64" placeholder="Search by name or owner">
+            <button id="addBtn" class="bg-[var(--soft-teal)] text-white px-5 py-3 rounded-md hover:brightness-95">Add Record</button>
+          </div>
+        </div>
+
+        <table class="w-full border-collapse">
+          <thead><tr class="text-left text-gray-600 border-b"><th class="py-3">Pet Name</th><th class="py-3">Species</th><th class="py-3">Breed</th><th class="py-3">Owner</th><th class="py-3">Actions</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+
+  <div id="modalRoot"></div>
+
+  <!-- Auto-detects backend, falls back to demo mode if unavailable -->
+  <script src="assets/api.js"></script>
+  <script src="assets/app.js"></script>
+  <script>
+    ensureLoggedIn();
+    const role = getRole();
+    // Redirect pharmacist away from pet records (they shouldn't see this page)
+    if(role === 'pharmacist'){
+      location.href = 'dashboard.html';
+    }
+    renderSidebar(document.getElementById('sidebarNav'), role, 'pet-records.html');
+
+    const rows=document.getElementById('rows');
+    const q=document.getElementById('petSearch');
+    const modalRoot=document.getElementById('modalRoot');
+    let lastRawFile=null;
+    const role = getRole();
+
+    // Hide buttons based on role
+    if(role === 'pharmacist'){
+      // Pharmacists cannot access pet records
+      document.getElementById('addBtn').style.display = 'none';
+    }
+
+    async function render(){
+      try{
+      const term=(q.value||'').toLowerCase();
+      const pets=await repoListPets();
+        const safe = Array.isArray(pets) ? pets : [];
+        const filtered = safe.filter(p=>{
+          try{ return JSON.stringify(p).toLowerCase().includes(term); }catch{ return false; }
+        });
+        const withOwnerNames = await Promise.all(filtered.map(async p=>{
+          let ownerName = p.owner||'';
+          if(!ownerName && p.ownerId){ const o = await repoGetOwner(p.ownerId); ownerName = o? o.fullName : ''; }
+          return { ...p, _ownerName: ownerName };
+        }));
+        
+        // Role-based button visibility
+        // Vets can add, edit, delete
+        // Receptionist can add, edit but NOT delete
+        // Admin can do everything
+        const canEdit = role === 'admin' || role === 'receptionist' || role === 'vet';
+        const canDelete = role === 'admin' || role === 'vet'; // Receptionist cannot delete
+        
+        rows.innerHTML=withOwnerNames.map(p=>`
+        <tr class="border-b">
+          <td class="py-3">${p.name||''}</td>
+          <td class="py-3">${p.species||''}</td>
+          <td class="py-3">${p.breed||''}</td>
+            <td class="py-3">${p._ownerName||''}</td>
+          <td class="py-3">
+            <button class="px-3 py-2 border rounded-md mr-2 hover:bg-gray-50" onclick="viewPet(${p.id})">View</button>
+            ${canEdit ? `<button class="px-3 py-2 border rounded-md mr-2 hover:bg-gray-50" onclick="openForm(${p.id})">Edit</button>` : ''}
+            ${canDelete ? `<button class="px-3 py-2 border rounded-md text-red-600 hover:bg-red-50" onclick="delPet(${p.id})">Delete</button>` : ''}
+          </td>
+        </tr>`).join('');
+      }catch(err){ console.error(err); alert('Render error: '+err.message); }
+    }
+    function viewPet(id){ location.href=`pet-profile.html?id=${id}`; }
+    async function delPet(id){ if(confirm('Delete this pet?')){ await repoDeletePet(id); render(); } }
+
+    async function openForm(id){
+      try{
+      const editing = id ? await repoGetPet(id) : null;
+      let currentPhoto = editing?.photo || null;
+      lastRawFile = null;
+
+      modalRoot.innerHTML=`
+        <div class="fixed inset-0 bg-black/40 flex items-center justify-center p-4">
+          <div class="bg-white rounded-2xl w-full max-w-3xl p-6">
+            <h3 class="text-xl font-semibold mb-4">${editing?'Edit':'Add'} Pet</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+              ${field('name','Pet Name',editing?.name)}
+              ${selectField('species','Species',editing?.species||'',['','Canine','Feline'])}
+              <label class="text-sm text-gray-600">Breed
+                <select id="f_breed" class="w-full border mt-1 border-gray-300 rounded-md p-3" ${editing?.species?'' : 'disabled'}></select>
+              </label>
+              <label id="wrap_breedOther" class="text-sm text-gray-600 hidden">Breed (Others)
+                <input id="f_breedOther" class="w-full border mt-1 border-gray-300 rounded-md p-3" placeholder="Enter breed">
+              </label>
+              ${selectField('gender','Gender',editing?.gender||'Female',['Female','Male'])}
+              ${field('age','Age',editing?.age,'number')}
+              ${field('microchip','Microchip',editing?.microchip)}
+              <div class="md:col-span-2 border rounded-lg p-3">
+                <div class="flex items-center justify-between mb-2">
+                  <div class="text-sm text-gray-600">Owner</div>
+                  <select id="ownerMode" class="border rounded-md p-2 text-sm">
+                    <option value="select">Select Existing</option>
+                    <option value="create">Create New</option>
+                  </select>
+                </div>
+                <div id="ownerSelect">
+                  <input id="f_ownerSearch" class="w-full border rounded-md p-2 mb-2" placeholder="Search name or phone">
+                  <div id="ownerResults" class="max-h-32 overflow-auto border rounded-md"></div>
+                </div>
+                <div id="ownerCreate" class="hidden grid grid-cols-1 md:grid-cols-2 gap-3">
+                  ${field('ownerName','Full Name','')}
+                  ${field('ownerPhone','Phone','')}
+                  ${field('ownerEmail','Email','', 'email')}
+                  <label class="text-sm text-gray-600 md:col-span-2">Address<input id="f_ownerAddress" class="w-full border mt-1 border-gray-300 rounded-md p-3"></label>
+                </div>
+              </div>
+              ${field('address','Home Address',editing?.address)}
+              ${selectField('federation','Federation',editing?.federation||'N/A',['FCCI','FCPI','N/A'])}
+              <div class="col-span-1 md:col-span-2">
+                <div class="text-sm text-gray-600 mb-1">Photo</div>
+                <div class="flex items-center gap-4">
+                  <div id="photoPreview" class="w-28 h-28 rounded-lg bg-gray-100 border flex items-center justify-center text-gray-400 overflow-hidden">
+                    ${currentPhoto ? '<img src="'+currentPhoto+'" class="w-full h-full object-cover">' : 'No Photo'}
+                  </div>
+                  <input id="photoInput" type="file" accept="image/*" class="border border-gray-300 rounded-md p-2">
+                </div>
+              </div>
+            </div>
+            <div class="mt-5 flex justify-end gap-3">
+              <button class="px-4 py-2 border rounded-md" onclick="closeModal()">Cancel</button>
+              <button class="px-5 py-2 rounded-md bg-[var(--soft-teal)] text-white" onclick="savePet(${editing?.id||''})">Save</button>
+            </div>
+          </div>
+        </div>`;
+
+      function field(id,label,val='',type='text'){return `<label class="text-sm text-gray-600">${label}<input id="f_${id}" type="${type}" value="${val??''}" class="w-full border mt-1 border-gray-300 rounded-md p-3"></label>`;}
+      function selectField(id,label,selected,options){const opts=options.map(o=>`<option ${o===selected?'selected':''}>${o}</option>`).join('');return `<label class="text-sm text-gray-600">${label}<select id="f_${id}" class="w-full border mt-1 border-gray-300 rounded-md p-3">${opts}</select></label>`;}
+      function gv(k){return document.getElementById('f_'+k).value;}
+
+      const photoInput=document.getElementById('photoInput');
+      const photoPreview=document.getElementById('photoPreview');
+      photoInput?.addEventListener('change',async(e)=>{const f=e.target.files?.[0];if(!f)return; try{ lastRawFile=f; currentPhoto = window.USE_API ? URL.createObjectURL(f) : await fileToDataURL(f); photoPreview.innerHTML=`<img src="${currentPhoto}" class="w-full h-full object-cover">`; }catch{ alert('Could not read image'); }});
+
+      // keyboard save/cancel
+      const wrap=document.querySelector('.fixed.inset-0');
+      function onKey(e){ if(e.key==='Enter'){ e.preventDefault(); savePet(editing ? editing.id : undefined); } if(e.key==='Escape'){ e.preventDefault(); closeModal(); } }
+      wrap.addEventListener('keydown', onKey);
+      document.getElementById('f_name').focus();
+
+      // Species → Breed dependent dropdown
+      const speciesEl = document.getElementById('f_species');
+      const breedEl = document.getElementById('f_breed');
+      const breedOtherWrap = document.getElementById('wrap_breedOther');
+      const breedOtherInput = document.getElementById('f_breedOther');
+      if(!speciesEl || !breedEl){ throw new Error('Form did not render correctly'); }
+      function populateBreeds(){
+        try{
+          const sp = speciesEl.value;
+          const list = (window.SPECIES_TO_BREEDS?.[sp]||[]);
+          const hasCustom = editing?.breed && !list.includes(editing.breed);
+          breedEl.innerHTML = `<option value=""></option>` + list.map(b=>`<option value="${b}" ${editing?.breed===b?'selected':''}>${b}</option>`).join('') + `<option value="Others" ${hasCustom?'selected':''}>Others</option>`;
+          breedEl.disabled = !sp;
+          const showOther = breedEl.value==='Others';
+          breedOtherWrap.classList.toggle('hidden', !showOther);
+          if(showOther){
+            breedOtherInput.value = hasCustom ? editing?.breed||'' : breedOtherInput.value;
+            breedOtherInput.focus();
+          } else if(!hasCustom) {
+            breedOtherInput.value = '';
+          }
+        }catch(err){ console.error(err); }
+      }
+      speciesEl.addEventListener('change', populateBreeds);
+      populateBreeds();
+      breedEl.addEventListener('change', ()=>{
+        const show = breedEl.value==='Others';
+        breedOtherWrap.classList.toggle('hidden', !show);
+        if(!show){ breedOtherInput.value=''; }
+        else { breedOtherInput.focus(); }
+      });
+
+      // Owner selection/create UI
+      const ownerMode = document.getElementById('ownerMode');
+      const ownerSelect = document.getElementById('ownerSelect');
+      const ownerCreate = document.getElementById('ownerCreate');
+      const ownerResults = document.getElementById('ownerResults');
+      const ownerSearch = document.getElementById('f_ownerSearch');
+      let selectedOwnerId = editing?.ownerId || null;
+
+      ownerMode.addEventListener('change',()=>{
+        const m = ownerMode.value;
+        ownerSelect.classList.toggle('hidden', m!=='select');
+        ownerCreate.classList.toggle('hidden', m!=='create');
+      });
+      // Prefill search results
+      (async function initOwnerSection(){
+        if(selectedOwnerId){
+          const o = await repoGetOwner(selectedOwnerId);
+          if(o){ ownerResults.innerHTML = `<div class='p-2 text-sm'>Selected: <b>${o.fullName}</b> (${o.phone})</div>`; }
+        }
+        renderOwnerSearch();
+      })();
+
+      async function renderOwnerSearch(){
+        try{
+          const term = ownerSearch.value||'';
+          const list = await repoSearchOwners(term);
+          const selected = selectedOwnerId ? await repoGetOwner(selectedOwnerId) : null;
+          const selectedRow = selected ? `<div class='p-2 text-sm bg-green-50 border-b'>Selected: <b>${selected.fullName}</b> (${selected.phone})</div>` : '';
+          ownerResults.innerHTML = selectedRow + (list.map(o=>`<div class='px-3 py-2 text-sm hover:bg-gray-50 cursor-pointer' data-id='${o.id}'>${o.fullName} — ${o.phone}${o.email ? ' — '+o.email : ''}</div>`).join('') || `<div class='p-2 text-sm text-gray-500'>No results</div>`);
+          ownerResults.querySelectorAll('[data-id]')?.forEach(el=>{
+            el.addEventListener('click',()=>{ selectedOwnerId = Number(el.dataset.id); renderOwnerSearch(); });
+          });
+        }catch(err){ console.error(err); alert('Owner search error: '+err.message); }
+      }
+      ownerSearch.addEventListener('input', renderOwnerSearch);
+
+      window.closeModal=()=>modalRoot.innerHTML='';
+      window.savePet=async(editId)=>{
+        try {
+          // Determine owner
+          let ownerId = selectedOwnerId;
+          let ownerName = null;
+          if(ownerMode.value==='create'){
+            const fullName = gv('ownerName').trim();
+            const phone = gv('ownerPhone').trim();
+            const email = (document.getElementById('f_ownerEmail')?.value||'').trim();
+            const address = (document.getElementById('f_ownerAddress')?.value||'').trim();
+            if(!fullName){ alert('Owner full name is required'); return; }
+            if(!phone || !validatePhone(phone)){ alert('Valid phone is required'); return; }
+            if(email && !validateEmail(email)){ alert('Email looks invalid'); return; }
+            const created = await repoAddOwner({ fullName, phone, email, address });
+            ownerId = created.id; ownerName = created.fullName;
+          } else if(!ownerId) {
+            alert('Please select an owner or choose Create New');
+            return;
+          } else {
+            const o = await repoGetOwner(ownerId); ownerName = o? o.fullName : '';
+          }
+
+          let breedValue = gv('breed');
+          if(breedValue==='Others'){ breedValue = (document.getElementById('f_breedOther').value||'').trim(); }
+          const base={name:gv('name'),species:gv('species'),breed:breedValue,gender:gv('gender'),age:Number(gv('age')||0),microchip:gv('microchip'),owner:ownerName,address:gv('address'),federation:gv('federation')||'N/A',photo: window.USE_API ? null : currentPhoto, ownerId};
+          if(editId){
+            const prev=await repoGetPet(editId);
+            await repoUpdatePet({...base,id:Number(editId),procedures:prev?.procedures||[]});
+            if(window.USE_API && lastRawFile){ 
+              try {
+                await window.Api.pets.uploadPhoto(editId, lastRawFile);
+              } catch (photoErr) {
+                console.warn('Photo upload failed:', photoErr);
+                // Continue even if photo upload fails
+              }
+            }
+          } else {
+            await repoAddPet({...base,procedures:[]}, window.USE_API ? lastRawFile : null);
+          }
+          closeModal(); render();
+          const pets = await repoListPets();
+          const newId = editId ? editId : pets[pets.length-1].id;
+          viewPet(newId);
+        } catch(err) {
+          console.error('Error saving pet:', err);
+          // Error is already shown by showNotification in repoAddPet/repoUpdatePet
+          // Don't show another alert
+        }
+      };
+      } catch(err){ console.error(err); alert('Error opening form: '+err.message); modalRoot.innerHTML=''; }
+    }
+
+    document.getElementById('addBtn').onclick=()=>openForm();
+    q.addEventListener('input',()=>render());
+    render();
+  </script>
+</body>
+</html>
