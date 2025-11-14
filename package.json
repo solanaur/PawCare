@@ -1,0 +1,49 @@
+{
+  "name": "pawcare-vet-clinic",
+  "version": "1.0.0",
+  "description": "Paw Care Veterinary Clinic Management System",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:linux": "electron-builder --linux"
+  },
+  "keywords": [
+    "veterinary",
+    "clinic",
+    "management"
+  ],
+  "author": "Paw Care",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "build": {
+    "appId": "com.pawcare.vetclinic",
+    "productName": "Paw Care Vet Clinic",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!pawcare-backend/**",
+      "!node_modules/**",
+      "!dist/**",
+      "!*.md"
+    ],
+    "mac": {
+      "category": "public.app-category.medical",
+      "icon": "assets/logo.png"
+    },
+    "win": {
+      "icon": "assets/logo.png"
+    },
+    "linux": {
+      "icon": "assets/logo.png"
+    }
+  }
+}
+
